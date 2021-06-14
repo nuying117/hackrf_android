@@ -125,7 +125,13 @@ public class Hackrf implements Runnable{
 	private static final String HACKRF_USB_PERMISSION 	= "com.mantz_it.hackrf_android.USB_PERMISSION";
 	private static final int numUsbRequests 			= 4; 		// Number of parallel UsbRequests
 	private static final int packetSize 				= 1024*16;	// Buffer Size of each UsbRequest
-	
+
+	protected static void reportError(String errMsg, HackrfCallbackInterface callbackInterface) {
+		Log.e(logTag, errMsg);
+		if (callbackInterface != null) {
+			callbackInterface.onHackrfError(errMsg);
+		}
+	}
 	/**
 	 * Initializing the Hackrf Instance with a USB Device. This will try to request
 	 * the permissions to open the USB device and then create an instance of
@@ -143,7 +149,7 @@ public class Hackrf implements Runnable{
 		UsbDevice hackrfUsbDvice = null;
 		
 		if(usbManager == null) {
-			Log.e(logTag, "initHackrf: Couldn't get an instance of UsbManager!");
+			reportError("initHackrf: Couldn't get an instance of UsbManager!", callbackInterface);
 			return false;
 		}
 		
@@ -151,7 +157,7 @@ public class Hackrf implements Runnable{
 		HashMap<String, UsbDevice> deviceList = usbManager.getDeviceList();
 		
 		if(deviceList == null) {
-			Log.e(logTag, "initHackrf: Couldn't read the USB device list!");
+			reportError("initHackrf: Couldn't read the USB device list!", callbackInterface);
 			return false;
 		}
 		
@@ -189,7 +195,7 @@ public class Hackrf implements Runnable{
 		// Check if we found a device:
 		if (hackrfUsbDvice == null)
 		{
-			Log.e(logTag,"initHackrf: No HackRF Device found.");
+			reportError("initHackrf: No HackRF Device found.", callbackInterface);
 			return false;
 		}
 		

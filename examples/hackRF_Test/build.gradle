@@ -2,7 +2,7 @@ apply plugin: 'com.android.application'
 
 android {
     compileSdkVersion 23
-    buildToolsVersion "25.0.2"
+    buildToolsVersion "25.0.3"
 
     defaultConfig {
         applicationId "com.mantz_it.hackrf_test"
@@ -19,6 +19,6 @@ android {
 }
 
 dependencies {
-    compile project(':hackrf_android')
-    compile 'com.android.support:appcompat-v7:23.3.0'
+    implementation project(':hackrf_android')
+    implementation 'com.android.support:appcompat-v7:23.4.0'
 }
