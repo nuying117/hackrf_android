@@ -90,6 +90,7 @@ public class Hackrf implements Runnable{
 	public static final int HACKRF_TRANSCEIVER_MODE_OFF 		= 0;
 	public static final int HACKRF_TRANSCEIVER_MODE_RECEIVE 	= 1;
 	public static final int HACKRF_TRANSCEIVER_MODE_TRANSMIT 	= 2;
+	public static final int HACKRF_TRANSCEIVER_MODE_RX_SWEEP    = 5;
 	
 	// USB Vendor Requests (from hackrf.c)
 	private static final int HACKRF_VENDOR_REQUEST_SET_TRANSCEIVER_MODE = 1;
@@ -114,11 +115,16 @@ public class Hackrf implements Runnable{
 	private static final int HACKRF_VENDOR_REQUEST_SET_TXVGA_GAIN = 21;
 	private static final int HACKRF_VENDOR_REQUEST_ANTENNA_ENABLE = 23;
 	private static final int HACKRF_VENDOR_REQUEST_SET_FREQ_EXPLICIT = 24;
+	private static final int HACKRF_VENDOR_REQUEST_INIT_SWEEP = 26;
 	
 	// RF Filter Paths (from hackrf.c)
 	public static final int RF_PATH_FILTER_BYPASS 		= 0;
 	public static final int RF_PATH_FILTER_LOW_PASS 	= 1;
 	public static final int RF_PATH_FILTER_HIGH_PASS 	= 2;
+
+	// Sweep style
+	public static final int HACKRF_SWEEP_MODE_LINEAR      = 0;
+	public static final int HACKRF_SWEEP_MODE_INTERLEAVED = 1;
 	
 	// Some Constants:
 	private static final String logTag 					= "hackrf_android";
@@ -983,6 +989,46 @@ public class Hackrf implements Runnable{
 		}
 		
 		return true;
+	}
+
+	public boolean initSweepMode(int frequencyMin, int frequencyMax,
+								 int numOfSampleBytesAfterEachTuning,
+								 int stepWidth, int offset, int sweepMode) throws HackrfUsbException {
+		byte[] data = new byte[9 + 1*2*2];
+		int ret = -1;
+
+		if (stepWidth <1)
+		{
+			Log.e(logTag, "invalid parameter stepWidth: " + String.valueOf(stepWidth));
+			return false;
+		}
+
+		if (sweepMode > HACKRF_SWEEP_MODE_INTERLEAVED) {
+			Log.e(logTag, "invalid parameter sweepMode: " + String.valueOf(sweepMode));
+			return false;
+		}
+
+		data[0] = (byte) (stepWidth & 0xff);
+		data[1] = (byte) ((stepWidth >> 8) & 0xff);
+		data[2] = (byte) ((stepWidth >> 16) & 0xff);
+		data[3] = (byte) ((stepWidth >> 24) & 0xff);
+		data[4] = (byte) (offset & 0xff);
+		data[5] = (byte) ((offset >> 8) & 0xff);
+		data[6] = (byte) ((offset >> 16) & 0xff);
+		data[7] = (byte) ((offset >> 24) & 0xff);
+		data[8] = (byte) (sweepMode & 0xff);
+
+		data[9] = (byte) (frequencyMin & 0xff);
+		data[10] = (byte) ((frequencyMin >> 8) & 0xff);
+
+		data[11] = (byte) (frequencyMax & 0xff);
+		data[12] = (byte) ((frequencyMax >> 8) & 0xff);
+
+		ret = sendUsbRequest(UsbConstants.USB_DIR_OUT,
+				HACKRF_VENDOR_REQUEST_INIT_SWEEP,
+				data.length & 0xffff, ((data.length >> 16) & 0xffff), data);
+
+		return ret >= data.length;
 	}
 	
 	/**
