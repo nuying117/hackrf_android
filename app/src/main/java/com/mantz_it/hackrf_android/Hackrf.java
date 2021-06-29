@@ -1056,6 +1056,25 @@ public class Hackrf implements Runnable{
 		
 		return this.queue;
 	}
+
+	public ArrayBlockingQueue<byte []> startRXSweep() throws  HackrfUsbException
+	{
+		// Flush the queue
+		this.queue.clear();
+
+		// Signal the HackRF Device to start receiving:
+		this.setTransceiverMode(HACKRF_TRANSCEIVER_MODE_RX_SWEEP);
+
+		// Start the Thread to queue the received samples:
+		this.usbThread = new Thread(this);
+		this.usbThread.start();
+
+		// Reset the packet counter and start time for statistics:
+		this.transceiveStartTime = System.currentTimeMillis();
+		this.transceivePacketCounter = 0;
+
+		return this.queue;
+	}
 	
 	/**
 	 * Starts transmitting.
@@ -1126,7 +1145,8 @@ public class Hackrf implements Runnable{
 			}
 			
 			// Run loop until transceiver mode changes...
-		    while(this.transceiverMode == HACKRF_TRANSCEIVER_MODE_RECEIVE)
+		    while(this.transceiverMode == HACKRF_TRANSCEIVER_MODE_RECEIVE
+					|| this.transceiverMode == HACKRF_TRANSCEIVER_MODE_RX_SWEEP)
 		    {
 			    // Wait for a request to return. This will block until one of the requests is ready.
 		    	UsbRequest request = usbConnection.requestWait(); 
@@ -1179,7 +1199,8 @@ public class Hackrf implements Runnable{
 	    }
 		
 		// If the transceiverMode is still on RECEIVE, we stop Receiving:
-		if(this.transceiverMode == HACKRF_TRANSCEIVER_MODE_RECEIVE)
+		if(this.transceiverMode == HACKRF_TRANSCEIVER_MODE_RECEIVE
+				|| this.transceiverMode == HACKRF_TRANSCEIVER_MODE_RX_SWEEP)
 		{
 			try {
 				this.stop();
@@ -1312,6 +1333,4 @@ public class Hackrf implements Runnable{
 			default:
 		}
 	}
-	
-	
 }
