@@ -75,6 +75,7 @@ public class MainActivity extends AppCompatActivity implements Runnable, HackrfC
 	private Button bt_rx = null;
 	private Button bt_tx = null;
 	private Button bt_stop = null;
+	private Button bt_sweep = null;
 	private EditText et_sampRate = null;
 	private EditText et_freq = null;
 	private EditText et_filename = null;
@@ -102,8 +103,9 @@ public class MainActivity extends AppCompatActivity implements Runnable, HackrfC
 	private int task = -1;
 	private static final int PRINT_INFO = 0;
 	private static final int RECEIVE = 1;
-	private static final int TRANSMIT = 2;	
-	
+	private static final int TRANSMIT = 2;
+	private static final int SWEEP = 3;
+
 	private boolean stopRequested = false;	// Used to stop receive/transmit thread
 	
 	// Set this to true to rewind sample file every time the end is reached:
@@ -140,6 +142,7 @@ public class MainActivity extends AppCompatActivity implements Runnable, HackrfC
    		bt_rx 			= ((Button) this.findViewById(R.id.bt_rx));
    		bt_tx			= ((Button) this.findViewById(R.id.bt_tx));
    		bt_stop			= ((Button) this.findViewById(R.id.bt_stop));
+   		bt_sweep        = ((Button) this.findViewById(R.id.bt_sweep));
    		bt_openHackRF	= ((Button) this.findViewById(R.id.bt_openHackRF));
 		et_sampRate 	= (EditText) this.findViewById(R.id.et_sampRate);
 		et_freq 		= (EditText) this.findViewById(R.id.et_freq);
@@ -258,6 +261,7 @@ public class MainActivity extends AppCompatActivity implements Runnable, HackrfC
 		       		bt_rx.setEnabled(enable);
 		       		bt_tx.setEnabled(enable);
 		       		bt_stop.setEnabled(enable);
+				    bt_sweep.setEnabled(enable);
 		       		bt_openHackRF.setEnabled(!enable);
 	                }
 	            });
@@ -280,6 +284,7 @@ public class MainActivity extends AppCompatActivity implements Runnable, HackrfC
 		       		bt_rx.setEnabled(!enable);
 		       		bt_tx.setEnabled(!enable);
 		       		bt_stop.setEnabled(enable);
+				    bt_sweep.setEnabled(!enable);
 	                }
 	            });
 	}
@@ -412,6 +417,29 @@ public class MainActivity extends AppCompatActivity implements Runnable, HackrfC
 		}
 	}
 
+	public void sweep(View view)
+	{
+		// Check for the WRITE_EXTERNAL_STORAGE permission:
+		/*
+		if (ContextCompat.checkSelfPermission(this, "android.permission.WRITE_EXTERNAL_STORAGE")
+				!= PackageManager.PERMISSION_GRANTED) {
+			printOnScreen("Need to ask for permission to write files...\n");
+			ActivityCompat.requestPermissions(this, new String[]{"android.permission.WRITE_EXTERNAL_STORAGE"},
+					PERMISSION_REQUEST_WRITE_FILES);
+			return; // wait for the permission response (handled in onRequestPermissionResult())
+		}
+		*/
+
+		if (hackrf != null)
+		{
+			this.readGuiElements();
+			this.task = SWEEP;
+			this.stopRequested = false;
+			new Thread(this).start();
+			toggleButtonsEnabledIfTransceiving(true);
+		}
+	}
+
 	/**
 	 * Is called by the hackrf_android library after the device is ready.
 	 * Was triggered by the initHackrf() call in openHackrf().
@@ -455,6 +483,7 @@ public class MainActivity extends AppCompatActivity implements Runnable, HackrfC
 			case PRINT_INFO:	infoThread(); break;
 			case RECEIVE:		receiveThread(); break;
 			case TRANSMIT:		transmitThread(); break;
+			case SWEEP:			sweepThread(); break;
 			default:
 		}
 		
@@ -485,7 +514,82 @@ public class MainActivity extends AppCompatActivity implements Runnable, HackrfC
 			this.toggleButtonsEnabledIfHackrfReady(false);
 		}
 	}
-	
+
+	public void sweepThread()
+	{
+		int basebandFilterWidth = Hackrf.computeBasebandFilterBandwidth((int)(0.75*sampRate));
+		int freqMin = 800;
+		int freqMax = 900;
+		boolean ret = false;
+		int maxDumpBytes = 100;
+
+		toggleButtonsEnabledIfTransceiving(true);
+		try {
+			// First set all parameters:
+			printOnScreen("Setting Sample Rate to " + sampRate + " Sps ... ");
+			hackrf.setSampleRate(sampRate, 1);
+			//printOnScreen("ok.\nSetting Frequency to " + frequency + " Hz ... ");
+			//hackrf.setFrequency(frequency);
+			printOnScreen("ok.\nSetting Baseband Filter Bandwidth to " + basebandFilterWidth + " Hz ... ");
+			hackrf.setBasebandFilterBandwidth(basebandFilterWidth);
+			printOnScreen("ok.\nSetting RX VGA Gain to " + vgaGain + " ... ");
+			hackrf.setRxVGAGain(vgaGain);
+			printOnScreen("ok.\nSetting LNA Gain to " + lnaGain + " ... ");
+			hackrf.setRxLNAGain(lnaGain);
+			printOnScreen("ok.\nSetting Amplifier to " + amp + " ... ");
+			hackrf.setAmp(amp);
+			printOnScreen("ok.\nSetting Antenna Power to " + antennaPower + " ... ");
+			hackrf.setAntennaPower(antennaPower);
+			printOnScreen("ok.\nInit sweep mode ...");
+			ret = hackrf.initSweepMode(freqMin, freqMax, hackrf.getPacketSize(), sampRate/1000000, 7500000, Hackrf.HACKRF_SWEEP_MODE_INTERLEAVED);
+			if(ret)
+			{
+				printOnScreen("ok.\n\n");
+			}
+			else
+			{
+				printOnScreen("failure\n\n");
+			}
+
+			// Start Receiving:
+			printOnScreen("Start Receiving... \n");
+			ArrayBlockingQueue<byte[]> queue = hackrf.startRXSweep();
+
+			//while(!this.stopRequested) {
+				byte[] receivedBytes = queue.poll(1000, TimeUnit.MILLISECONDS);
+
+				/*  HERE should be the DSP portion of the app. The receivedBytes
+				 *  variable now contains a byte array of size hackrf.getPacketSize().
+				 *  This is currently set to 16KB, but may change in the future.
+				 *  The bytes are interleaved, 8-bit, signed IQ samples (in-phase
+				 *  component first, followed by the quadrature component):
+				 *
+				 *  [--------- first sample ----------]   [-------- second sample --------]
+				 *         I                  Q                  I                Q ...
+				 *  receivedBytes[0]   receivedBytes[1]   receivedBytes[2]       ...
+				 *
+				 *  Note: Make sure you read from the queue fast enough, because if it runs
+				 *  full, the hackrf_android library will abort receiving and go back to
+				 *  OFF mode.
+				 */
+
+				// We just write the whole packet into the file:
+				if (receivedBytes != null) {
+					for (int i = 0; i < receivedBytes.length && i < maxDumpBytes; i += 2) {
+						printOnScreen("IQ #" + i + ": (" + Integer.toString((int) (receivedBytes[i]))
+								+ ", " + Integer.toString((int) (receivedBytes[i + 1])) + ")\n");
+					}
+					hackrf.returnBufferToBufferPool(receivedBytes);
+				} else {
+					printOnScreen("receivedBytes is null\n");
+				}
+			//}
+			toggleButtonsEnabledIfTransceiving(false);
+		} catch (Exception e) {
+			printOnScreen("error occured.\n\n");
+			toggleButtonsEnabledIfTransceiving(false);
+		}
+	}
 	/**
 	 * Will run in a separate thread created in rx(). Sets the HackRF into receiving 
 	 * mode and then save the received samples to a file. Will run forever until user 

@@ -973,7 +973,7 @@ public class Hackrf implements Runnable{
 	 */
 	public boolean setTransceiverMode(int mode) throws HackrfUsbException
 	{
-		if (mode < 0 || mode > 2)
+		if (mode < 0 || mode > 5)
 		{
 			Log.e(logTag,"Invalid Transceiver Mode: " + mode);
 			return false;
@@ -1026,7 +1026,7 @@ public class Hackrf implements Runnable{
 
 		ret = sendUsbRequest(UsbConstants.USB_DIR_OUT,
 				HACKRF_VENDOR_REQUEST_INIT_SWEEP,
-				data.length & 0xffff, ((data.length >> 16) & 0xffff), data);
+				(numOfSampleBytesAfterEachTuning & 0xffff), ((numOfSampleBytesAfterEachTuning >> 16) & 0xffff), data);
 
 		return ret >= data.length;
 	}
@@ -1326,10 +1326,13 @@ public class Hackrf implements Runnable{
 	public void run() {
 		switch(this.transceiverMode)
 		{
-			case HACKRF_TRANSCEIVER_MODE_RECEIVE: 	receiveLoop();
-													break;
-			case HACKRF_TRANSCEIVER_MODE_TRANSMIT:  transmitLoop();
-													break;
+			case HACKRF_TRANSCEIVER_MODE_RECEIVE:
+			case HACKRF_TRANSCEIVER_MODE_RX_SWEEP:
+				receiveLoop();
+				break;
+			case HACKRF_TRANSCEIVER_MODE_TRANSMIT:
+				transmitLoop();
+				break;
 			default:
 		}
 	}
